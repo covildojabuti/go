@@ -3,75 +3,99 @@
 <head>
   <meta charset="utf-8" />
   <meta name="robots" content="noindex" />
-  <title>Redirecionando…</title>
-  <!-- fallback se JS estiver desabilitado -->
+  <title>Go</title>
+
+  <!-- Se JS estiver desligado, manda pro site -->
   <noscript><meta http-equiv="refresh" content="0; url=https://covildojabuti.com.br/"></noscript>
 </head>
 <body>
 <script>
-  const DESTS = {
+/*
+URLs curtas (pra bio):
+- /?t=ml&s=ig   -> Mercado Livre, source Instagram
+- /?t=sh&s=tt   -> Shopee, source TikTok
+- /?t=si&s=yt   -> Site, source YouTube
+- /?t=lj&s=ig   -> Lojista
+- /?t=wp&s=ig   -> WhatsApp
+Opcional:
+- &i=ABC        -> item/código interno (produto/oferta)
+- &m=st         -> medium (bio, stories, shorts etc). Padrão: bio
+- &c=p25        -> campaign (nome curtinho). Padrão: p (perfil)
+- &k=x          -> content (criativo/posição). Padrão: t (o destino)
+*/
+
+  /* 1) Destinos (t=...) */
+  const D = {
     ml: "https://lista.mercadolivre.com.br/pagina/covildojabuti/#global_position=1",
     sh: "https://shopee.com.br/covildojabuti#product_list",
     si: "https://covildojabuti.com.br/",
-    lj: "https://lojista.covildojabuti.com.br",
+    lj: "https://lojista.covildojabuti.com.br/",
     wp: "https://wa.me/5519999549787"
   };
 
-  // Opcional: mapa por item
-  const ITEMS = {
-    // "ml:123": "https://www.mercadolivre.com.br/link-do-produto-123",
-    // "sh:ABC": "https://shopee.com.br/link-do-item-ABC"
+  /* 2) Itens específicos (opcional): t:item -> URL final */
+  const I = {
+    // "ml:123": "https://www.mercadolivre.com.br/seu-produto-123",
+    // "sh:ABC": "https://shopee.com.br/seu-item-ABC"
   };
 
-  const ENDPOINT = "https://script.google.com/macros/s/AKfycbyfX4ct_77xUkSljZswU7YtO3K_4bH7-S0trQCoTA8GqNnGAkD5KNGwOIpoBmrm3zA10A/exec";
+  /* 3) Endpoint (Google Apps Script) */
+  const E = "https://script.google.com/macros/s/AKfycbyfX4ct_77xUkSljZswU7YtO3K_4bH7-S0trQCoTA8GqNnGAkD5KNGwOIpoBmrm3zA10A/exec";
 
-  const qs = new URLSearchParams(location.search);
+  /* 4) Lê query curta */
+  const q = new URLSearchParams(location.search);
 
-  // 1) whitelist do "to"
-  const rawTo = (qs.get("to") || "").toLowerCase().trim();
-  const to = Object.prototype.hasOwnProperty.call(DESTS, rawTo) ? rawTo : "site";
+  // t = destino (whitelist)
+  const t0 = (q.get("t") || "").toLowerCase().trim();
+  const t = Object.prototype.hasOwnProperty.call(D, t0) ? t0 : "si";
 
-  const item = (qs.get("item") || "").trim();
+  // i = item/oferta (opcional)
+  const i = (q.get("i") || "").trim();
 
-  // UTMs defaults
-  const utm_source = qs.get("utm_source") || qs.get("from") || "direct";
-  const utm_medium = qs.get("utm_medium") || "social";
-  const utm_campaign = qs.get("utm_campaign") || "link";
-  const utm_content = qs.get("utm_content") || (to || "go");
-  const utm_term = qs.get("utm_term") || "";
+  // s = source (ig/tt/yt/wp/...)
+  const s = (q.get("s") || "").toLowerCase().trim() || "d";  // d=direct
 
-  // Resolve destino final
-  const itemKey = (to && item) ? `${to}:${item}` : "";
-  const base = (itemKey && ITEMS[itemKey]) ? ITEMS[itemKey] : DESTS[to];
+  // m = medium (bio/st=stories/sh=shorts/msg=message)
+  const m = (q.get("m") || "").toLowerCase().trim() || "bio";
 
-  const destUrl = new URL(base);
+  // c = campaign (p=perfil por padrão)
+  const c = (q.get("c") || "").trim() || "p";
 
-  // 2) só seta UTM se ainda não existir no destino
-  const setIfMissing = (k, v) => { if (v && !destUrl.searchParams.has(k)) destUrl.searchParams.set(k, v); };
-  setIfMissing("utm_source", utm_source);
-  setIfMissing("utm_medium", utm_medium);
-  setIfMissing("utm_campaign", utm_campaign);
-  setIfMissing("utm_content", utm_content);
-  setIfMissing("utm_term", utm_term);
+  // k = content (variação/posição). Default: o próprio destino (t)
+  const k = (q.get("k") || "").trim() || t;
 
-  // Log (fire-and-forget)
-  const payload = {
+  /* 5) Resolve URL final */
+  const key = (t && i) ? `${t}:${i}` : "";
+  const base = (key && I[key]) ? I[key] : D[t];
+  const u = new URL(base);
+
+  /* 6) UTMs: mantém padrão de mercado, mas geradas a partir dos parâmetros curtos */
+  // Só seta se não existir no destino
+  const S = (K, V) => { if (V && !u.searchParams.has(K)) u.searchParams.set(K, V); };
+  S("utm_source", s);
+  S("utm_medium", m);
+  S("utm_campaign", c);
+  S("utm_content", k);
+  if (i) S("utm_term", i); // usa o item como term (opcional, útil pra filtrar)
+
+  /* 7) Log (assíncrono, sem travar) */
+  const p = {
     ts: new Date().toISOString(),
-    to,
-    item,
-    dest: destUrl.toString(),
-    utm_source, utm_medium, utm_campaign, utm_content, utm_term,
+    t, i,              // destino e item (curtos)
+    s, m, c, k,        // parâmetros curtos
+    dest: u.toString(),
     ref: document.referrer || "",
     ua: navigator.userAgent || ""
   };
 
   try {
-    const blob = new Blob([JSON.stringify(payload)], { type: "text/plain;charset=utf-8" });
-    if (navigator.sendBeacon) navigator.sendBeacon(ENDPOINT, blob);
-    else fetch(ENDPOINT, { method: "POST", body: JSON.stringify(payload), keepalive: true, mode: "no-cors" });
+    const b = new Blob([JSON.stringify(p)], { type: "text/plain;charset=utf-8" });
+    if (navigator.sendBeacon) navigator.sendBeacon(E, b);
+    else fetch(E, { method: "POST", body: JSON.stringify(p), keepalive: true, mode: "no-cors" });
   } catch (e) {}
 
-  location.replace(destUrl.toString());
+  /* 8) Redirect imediato */
+  location.replace(u.toString());
 </script>
 </body>
 </html>
